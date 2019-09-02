@@ -19,7 +19,8 @@
         "yiisoft/yii2-bootstrap": "~2.0.0",
         "yiisoft/yii2-swiftmailer": "~2.0.0 || ~2.1.0",
         "yiisoft/yii2-httpclient": "^2.0",
-        "victor78/yii2-zipper": "~0.0.4"
+        "victor78/yii2-zipper": "~0.0.4",
+        "yiisoft/yii2-mongodb": "^2.1"
     },
     "require-dev": {
         "yiisoft/yii2-debug": "~2.1.0",

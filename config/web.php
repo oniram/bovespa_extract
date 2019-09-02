@@ -42,7 +42,7 @@ $config = [
                 ],
             ],
         ],
-        'db' => $db,
+        'mongodb' => $db,
         /*
         'urlManager' => [
             'enablePrettyUrl' => true,
