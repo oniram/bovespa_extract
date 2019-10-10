@@ -13,6 +13,9 @@ $config = [
         '@npm'   => '@vendor/npm-asset',
         '@tests' => '@app/tests',
     ],
+     'bootstrap' => [
+        'queue', // The component registers its own console commands
+    ],
     'components' => [
         'cache' => [
             'class' => 'yii\caching\FileCache',
@@ -26,6 +29,10 @@ $config = [
             ],
         ],
         'db' => $db,
+        'queue' => [
+            'class' => \yii\queue\file\Queue::class,
+            'path' => '@runtime/queue',
+        ],
     ],
     'params' => $params,
     /*

@@ -11,13 +11,17 @@ use yii\filters\VerbFilter;
 use app\models\LoginForm;
 use app\models\ContactForm;
 use app\models\Paper;
+use app\models\DownloadJob;
 use ZipArchive;
 use Datetime;
+use DateInterval;
+use DatePeriod;
 
 class SiteController extends Controller
 {
     
     public function downloadData($date) {
+        Yii::info("[IMPORT] start download data from " . $date);
         $file_path = '/tmp/' . $date . '.zip';
         $fh = fopen($file_path, 'w');
         $client = new Client([
@@ -29,9 +33,11 @@ class SiteController extends Controller
             ->setUrl('http://bvmf.bmfbovespa.com.br/InstDados/SerHist/COTAHIST_D' . $date . '.zip')
             ->setOutputFile($fh)
             ->send();
+        Yii::info("[IMPORT] end download data from " . $date);
     }    
 
     public function extractData($date) {
+        Yii::info("[IMPORT] start extractData data from " . $date);
         $file_path = '/tmp/' . $date . '.zip';
         $zip = new ZipArchive;
         $res = $zip->open($file_path);
@@ -42,9 +48,11 @@ class SiteController extends Controller
         } else {
             echo 'failed, code:' . $res;
         }
+        Yii::info("[IMPORT] end extractData data from " . $date);
     }
 
-    public function parseDataAndSaveInDatabase($date, $date_paper) {
+    public function parseDataAndSaveInDatabase($date) {
+        Yii::info("[IMPORT] start parseDataAndSaveInDatabase data from " . $date);
         $file = fopen("/tmp/COTAHIST_D". $date . ".TXT","r");
         if ($file) {
             $header = fgets($file);
@@ -142,26 +150,43 @@ class SiteController extends Controller
 
             fclose($file);
         } else {
-            // TODO: add error log
+            Yii::info("[IMPORT] file not found " . $date);
         }
+        Yii::info("[IMPORT] end parseDataAndSaveInDatabase data from " . $date);
         return "OK"; 
     }
 
-    public function actionImport()
+    public function actionImport($startDate, $endDate)
     {
-        $date = '05042019';
-        
-        $this->downloadData($date);
-        $this->extractData($date);
-        $date_paper = substr_replace($date, "-", 2, 0);
-        $date_paper = substr_replace($date_paper, "-", 5, 0);
-        $date_paper = date("Y-m-d H:i:s", strtotime($date_paper));
-        $register = $this->parseDataAndSaveInDatabase($date, $date_paper);
+        $begin =  DateTime::createFromFormat('dmY',$startDate);
+        $end =  DateTime::createFromFormat('dmY',$endDate);
 
-        return $register;
+        for($i = $begin; $i <= $end; $i->modify('+1 day')){
+            $dateFormatted = $i->format("dmY");
+            try {
+                    $this->downloadData($dateFormatted);
+                    $this->extractData($dateFormatted);
+                    $this->parseDataAndSaveInDatabase($dateFormatted);
+                    echo "\n sucesso na data " . $dateFormatted;    
+            } catch(\Exception $e) {
+                echo "\n falha na data " . $dateFormatted;
+            }
+
+            
+        }
+
+        return "importado " ;
+    }
+
+    public function actionBackground() {
+        Yii::$app->queue->push(new DownloadJob([
+            'url' => 'http://example.com/image.jpg2'
+        ]));
+        return "importado... " ;
     }
 
     public function actionFind() {
+        Yii::info("hi there");
         $paper = Paper::find()->where(["nomres"=>"LOJAS MARISA"])->one();
         return $paper->tpmerc;
     }

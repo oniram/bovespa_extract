@@ -36,13 +36,19 @@ $config = [
         'log' => [
             'traceLevel' => YII_DEBUG ? 3 : 0,
             'targets' => [
+                 'file' => 
                 [
                     'class' => 'yii\log\FileTarget',
-                    'levels' => ['error', 'warning'],
+                    'levels' => ['error', 'warning','info'],
+                    'logFile' => '@runtime/logs/import.log',
                 ],
             ],
         ],
         'mongodb' => $db,
+        'queue' => [
+            'class' => \yii\queue\file\Queue::class,
+            'path' => '@runtime/queue',
+        ],
         /*
         'urlManager' => [
             'enablePrettyUrl' => true,
