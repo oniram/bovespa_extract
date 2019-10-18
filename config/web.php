@@ -34,13 +34,10 @@ $config = [
             'useFileTransport' => true,
         ],
         'log' => [
-            'traceLevel' => YII_DEBUG ? 3 : 0,
             'targets' => [
-                 'file' => 
                 [
                     'class' => 'yii\log\FileTarget',
-                    'levels' => ['error', 'warning','info'],
-                    'logFile' => '@runtime/logs/import.log',
+                    'levels' => ['error', 'trace'],
                 ],
             ],
         ],
@@ -48,6 +45,7 @@ $config = [
         'queue' => [
             'class' => \yii\queue\file\Queue::class,
             'path' => '@runtime/queue',
+            'as log' => \yii\queue\LogBehavior::class
         ],
         /*
         'urlManager' => [
@@ -68,6 +66,9 @@ if (YII_ENV_DEV) {
         'class' => 'yii\debug\Module',
         // uncomment the following to add your IP if you are not connecting from localhost.
         //'allowedIPs' => ['127.0.0.1', '::1'],
+        'panels' => [
+                'queue' => \yii\queue\debug\Panel::class,
+            ],
     ];
 
     $config['bootstrap'][] = 'gii';
