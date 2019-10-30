@@ -13,10 +13,12 @@ use app\models\ContactForm;
 use app\models\Paper;
 use app\models\DownloadJob;
 use yii\queue\Queue;
+use yii\mongodb\Query;
 use ZipArchive;
 use Datetime;
 use DateInterval;
 use DatePeriod;
+use yii\helpers\ArrayHelper;
 
 class SiteController extends Controller
 {
@@ -40,25 +42,25 @@ class SiteController extends Controller
             $format = 'Y';
             $typeFromDownload = 'A';
         }
-         
-        for($i = $begin; $i <= $end; $i->modify('+1 ' . $type)){
+        $this->parseDataAndSaveInDatabase(null, null);
+        // for($i = $begin; $i <= $end; $i->modify('+1 ' . $type)){
             
 
-            $dateFormatted = $i->format($format);
+        //     $dateFormatted = $i->format($format);
 
-            try {
-                   //$this->downloadData($dateFormatted, $typeFromDownload);
-                   //$this->extractData($dateFormatted);
-                   $this->parseDataAndSaveInDatabase($dateFormatted, $typeFromDownload);
-                    Yii::debug("[IMPORT]sucesso na data " . $dateFormatted);    
+        //     try {
+        //            //$this->downloadData($dateFormatted, $typeFromDownload);
+        //            //$this->extractData($dateFormatted);
+        //            //$this->parseDataAndSaveInDatabase($dateFormatted, $typeFromDownload);
+        //             Yii::debug("[IMPORT]sucesso na data " . $dateFormatted);    
                     
-            } catch(\Exception $e) {
-                Yii::debug("[IMPORT]falha na data " . $dateFormatted . " " . $e->getMessage());
+        //     } catch(\Exception $e) {
+        //         Yii::debug("[IMPORT]falha na data " . $dateFormatted . " " . $e->getMessage());
                 
-            }
+        //     }
 
             
-        }
+        // }
 
         return "importado " ;
     }
@@ -126,7 +128,9 @@ class SiteController extends Controller
     public function parseDataAndSaveInDatabase($date, $type) {
         Yii::debug("[IMPORT] start parseDataAndSaveInDatabase data from " . $date);
         
-        
+        $papers = [];
+        $i = 0;
+        $batch_size = 10000;
         if($type == 'D') {
             $extension = '.TXT';
             $typeWithSeparator = "_D";
@@ -135,15 +139,53 @@ class SiteController extends Controller
             $typeWithSeparator = "_A";
         }
         
-        $file = fopen("/home/oniram/workspace/bovespa_extract/data/COTAHIST" . $typeWithSeparator . $date . $extension,"r");
-        if ($file) {
-            $header = fgets($file);
+        // $file = fopen("/home/oniram/workspace/bovespa_extract/data/COTAHIST" . $typeWithSeparator . $date . $extension,"r");
+
+        $files = glob('/home/oniram/workspace/bovespa_extract/data/splited/*.txt');
+        foreach($files as $filepath) {
+          $file = fopen($filepath, 'r');
+          if ($file) {
+            //$header = fgets($file);
+
             while (($line = fgets($file)) !== false) {
-                if(substr($line,0,10) == "99COTAHIST") {
-                    return "FIM";
+               
+                if($i == $batch_size) {
+
+                    $rows = ArrayHelper::getColumn($papers, 'attributes');
+
+                    $collection = Yii::$app->mongodb->getCollection('papers');
+
+                    $insertedRows = $collection->batchInsert($rows);
+                    $i = 0;
+                    $rows = [];
+                    $papers = [];
+
                 }
+                // if(substr($line,0,10) == "99COTAHIST") {
+
+                //     // $rows = ArrayHelper::getColumn($papers, 'attributes');
+
+                //     // $collection = Yii::$app->mongodb->getCollection('papers');
+
+                //     // $insertedRows = $collection->batchInsert($rows);
+                   
+        
+                //     //$postModel = new Paper;
+
+                    
+
+                //     // Yii::$app->mongodb->createCommand()->batchInsert($rows, null )->execute();
+
+                //     Yii::debug("[IMPORT] end parseDataAndSaveInDatabase data from " );
+                //     return "FIM";
+                // }
 
                 try {
+
+                    if(strpos($line, 'COTAHIST') !== false) {
+                        continue;
+                    }
+
                     $line = mb_convert_encoding($line, 'US-ASCII', 'UTF-8');
                     $paper = new Paper();
 
@@ -160,80 +202,83 @@ class SiteController extends Controller
 
                     //CODBDI - CÓDIGO BDI
                     //UTILIZADO PARA CLASSIFICAR OS PAPÉIS NA EMISSÃO DO BOLETIM DIÁRIO DE INFORMAÇÕES
-                    $paper->codbdi = substr($line,10,2);
+                    $paper->codbdi = str_replace(' ', '', substr($line,10,2));
 
                     //CODNEG - CÓDIGO DE NEGOCIAÇÃO DO PAPEL
-                    $paper->codneg = substr($line,12,12);
+                    $paper->codneg = str_replace(' ', '', substr($line,12,12));
 
                     //TPMERC - TIPO DE MERCADO
                     //CÓD. DO MERCADO EM QUE O PAPEL ESTÁ CADASTRADO
-                    $paper->tpmerc = substr($line,24,03);
+                    $paper->tpmerc = str_replace(' ', '', substr($line,24,03));
 
                     //NOMRES - NOME RESUMIDO DA EMPRESA EMISSORA DO PAPEL
-                    $paper->nomres = substr($line,27,12);
+                    $paper->nomres = str_replace(' ', '', substr($line,27,12));
 
                     //ESPECI - ESPECIFICAÇÃO DO PAPEL
-                    $paper->especi = substr($line,39,10);
+                    $paper->especi = str_replace(' ', '', substr($line,39,10));
 
                     //PRAZOT - PRAZO EM DIAS DO MERCADO A TERMO
-                    $paper->prazot = substr($line,49,3);
+                    $paper->prazot = str_replace(' ', '', substr($line,49,3));
 
                     //MODREF - MOEDA DE REFERÊNCIA
-                    $paper->modref = substr($line,52,4);
+                    $paper->modref = str_replace(' ', '', substr($line,52,4));
 
                     //PREABE - PREÇO DE ABERTURA DO PAPEL- MERCADO NO PREGÃO
-                    $paper->preab = substr($line,56,11);
+                    $paper->preab = str_replace(' ', '', substr($line,56,11));
 
                     //PREMAX - PREÇO MÁXIMO DO PAPEL- MERCADO NO PREGÃO
-                    $paper->premax = substr($line,69,11);
+                    $paper->premax = str_replace(' ', '', substr($line,69,11));
 
                     //PREMIN - PREÇO MÍNIMO DO PAPEL- MERCADO NO PREGÃO
-                    $paper->premin = substr($line,82,11);                
+                    $paper->premin = str_replace(' ', '', substr($line,82,11));                
 
                     //PREMED - PREÇO MÉDIO DO PAPEL- MERCADO NO PREGÃO
-                    $paper->premed = substr($line,95,11);                                
+                    $paper->premed = str_replace(' ', '', substr($line,95,11));                                
                     //PREULT - PREÇO DO ÚLTIMO NEGÓCIO DO PAPEL-MERCADO NO PREGÃO
-                    $paper->preult = substr($line,108,11);
+                    $paper->preult = str_replace(' ', '', substr($line,108,11));
 
                     //PREOFC - PREÇO DA MELHOR OFERTA DE COMPRA DO PAPEL- MERCADO
-                    $paper->preofc = substr($line,121,11);                
+                    $paper->preofc = str_replace(' ', '', substr($line,121,11));                
 
                     //PREOFV - PREÇO DA MELHOR OFERTA DE VENDA DO PAPEL- MERCADO
-                    $paper->preofv = substr($line,134,11);                
+                    $paper->preofv = str_replace(' ', '', substr($line,134,11));                
 
                     //TOTNEG - NEG. -NÚMERO DE NEGÓCIOS EFETUADOS COM O PAPEL- MERCADO NO PREGÃO
-                    $paper->totneg = substr($line,147,05);
+                    $paper->totneg = str_replace(' ', '', substr($line,147,05));
 
                     //QUATOT -QUANTIDADE TOTAL DE TÍTULOS NEGOCIADOS NESTE PAPEL- MERCADO                                
-                    $paper->quatot = substr($line,152,18);
+                    $paper->quatot = str_replace(' ', '', substr($line,152,18));
 
                     //VOLTOT - VOLUME TOTAL DE TÍTULOS NEGOCIADOS NESTE PAPEL- MERCADO
-                    $paper->voltot = substr($line,170,16);
+                    $paper->voltot = str_replace(' ', '', substr($line,170,16));
 
                     //PREEXE - PREÇO DE EXERCÍCIO PARA O MERCADO DE OPÇÕES OU VALOR DO CONTRATO PARA O MERCADO DE TERMO SECUNDÁRIO
-                    $paper->preexe = substr($line,188,11);
+                    $paper->preexe = str_replace(' ', '', substr($line,188,11));
 
                     //INDOPC - INDICADOR DE CORREÇÃO DE PREÇOS DE EXERCÍCIOS OU VALORES  E CONTRATO PARA OS MERCADOS DE OPÇÕES OU TERMO SECUNDÁRIO
-                    $paper->indopc = substr($line,201,1);                
+                    $paper->indopc = str_replace(' ', '', substr($line,201,1));                
 
                     //DATVEN - DATA DO VENCIMENTO PARA OS MERCADOS DE OPÇÕES OU TERMO SECUNDÁRIO
-                    $paper->datven = substr($line,202,8);                
+                    $paper->datven = str_replace(' ', '', substr($line,202,8));                
 
                     //FATCOT - FATOR DE COTAÇÃO DO PAPEL
-                    $paper->fatcot = substr($line,210,7);                
+                    $paper->fatcot = str_replace(' ', '', substr($line,210,7));                
 
                     //PTOEXE - PREÇO DE EXERCÍCIO EM PONTOS PARA OPÇÕES REFERENCIADAS EM DÓLAR OU VALOR DE CONTRATO EM PONTOS PARA TERMO SECUNDÁRIO
-                    $paper->ptoexe = substr($line,217,7);              
+                    $paper->ptoexe = str_replace(' ', '', substr($line,217,7));              
 
                     //CODISI - CÓDIGO DO PAPEL NO SISTEMA ISIN OU CÓDIGO INTERNO DO PAPEL
-                    $paper->codisi = substr($line,230,12);              
+                    $paper->codisi = str_replace(' ', '', substr($line,230,12));              
 
                     //DISMES - NÚMERO DE DISTRIBUIÇÃO DO PAPEL
-                    $paper->dismes = substr($line,242,3);              
+                    $paper->dismes = str_replace(' ', '', substr($line,242,3));              
 
                     $paper->created_at = date("Y-m-d H:i:s");
                     
-                    $paper->save();
+                    //$paper->save();
+
+                    $papers[$i] = $paper;
+                    $i = $i+1;
 
                 } catch(Exception $e) {
                     Yii::debug("[IMPORT] error");
@@ -241,21 +286,34 @@ class SiteController extends Controller
                 
 
             }
-
+            
             fclose($file);
+             
+             
+            $rows = ArrayHelper::getColumn($papers, 'attributes');
+            Yii::debug("[IMPORT] fim " .  sizeof($rows));
+            
+            $collection = Yii::$app->mongodb->getCollection('papers');
+            
+            $insertedRows = $collection->batchInsert($rows);
+            $i = 0;
+            $rows = [];
+            $papers = [];
         } else {
             Yii::debug("[IMPORT] file not found " . $date);
             
         }
-        Yii::debug("[IMPORT] end parseDataAndSaveInDatabase data from " . $date);
+        }
+        
         
         return "OK"; 
     }
 
     public function actionFind() {
-        Yii::info("hi there");
-        $paper = Paper::find()->where(["nomres"=>"LOJAS MARISA"])->one();
-        return $paper->tpmerc;
+        $rows = [];
+        $paper = Paper::find()->where(["nomres"=>"PPSA        "])->one();
+        $rows = $paper->attributes;
+        return print_r($rows);
     }
 
 
