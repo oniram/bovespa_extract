@@ -25,7 +25,20 @@ class SiteController extends Controller
     
    
 
-    public function actionImport($startDate, $endDate, $type = 'day')
+    public function actionImportToDatabase()
+    {
+         ini_set('max_execution_time', 0); //300 seconds = 5 minutes
+
+        Yii::debug("[IMPORT] start");
+      
+        try{
+            $this->parseDataAndSaveInDatabase(null, null);
+        } catch(\Exception $e) {
+            Yii::debug("[IMPORT] falha");
+        }
+    }
+
+    public function actionDownloadAndExtract($startDate, $endDate, $type = 'day')
     {
         
         ini_set('max_execution_time', 0); //300 seconds = 5 minutes
@@ -42,49 +55,29 @@ class SiteController extends Controller
             $format = 'Y';
             $typeFromDownload = 'A';
         }
-        $this->parseDataAndSaveInDatabase(null, null);
-        // for($i = $begin; $i <= $end; $i->modify('+1 ' . $type)){
-            
+       
+        
+        for($i = $begin; $i <= $end; $i->modify('+1 ' . $type)){
 
-        //     $dateFormatted = $i->format($format);
+            $dateFormatted = $i->format($format);
 
-        //     try {
-        //            //$this->downloadData($dateFormatted, $typeFromDownload);
-        //            //$this->extractData($dateFormatted);
-        //            //$this->parseDataAndSaveInDatabase($dateFormatted, $typeFromDownload);
-        //             Yii::debug("[IMPORT]sucesso na data " . $dateFormatted);    
+            try {
+                   $this->downloadData($dateFormatted, $typeFromDownload);
+                   $this->extractData($dateFormatted);
+                    Yii::debug("[IMPORT]sucesso na data " . $dateFormatted);    
                     
-        //     } catch(\Exception $e) {
-        //         Yii::debug("[IMPORT]falha na data " . $dateFormatted . " " . $e->getMessage());
+            } catch(\Exception $e) {
+                Yii::debug("[IMPORT]falha na data " . $dateFormatted . " " . $e->getMessage());
                 
-        //     }
+            }
 
             
-        // }
+        }
 
         return "importado " ;
     }
 
 
-
-    public function actionBackground($startDate, $endDate) {
-        $begin =  DateTime::createFromFormat('dmY',$startDate);
-        $end =  DateTime::createFromFormat('dmY',$endDate);
-
-        for($i = $begin; $i <= $end; $i->modify('+1 day')){
-            $dateFormatted = $i->format("dmY");
-            $id = Yii::$app->queue->push(new DownloadJob([
-                'dateFormatted' => $dateFormatted
-            ]));
-        }
-
-        Yii::$app->queue->on(Queue::EVENT_AFTER_ERROR, function ($event) {
-            Yii::debug($event->error);
-            echo($event->error);
-            return $event->error;
-        });
-        return "enfileirado";
-    }
 
      public function downloadData($date, $type) {
         Yii::debug("[IMPORT] start download data from " . $date);
@@ -131,24 +124,14 @@ class SiteController extends Controller
         $papers = [];
         $i = 0;
         $batch_size = 10000;
-        if($type == 'D') {
-            $extension = '.TXT';
-            $typeWithSeparator = "_D";
-        } else {
-            $extension = '.TXT';
-            $typeWithSeparator = "_A";
-        }
-        
-        // $file = fopen("/home/oniram/workspace/bovespa_extract/data/COTAHIST" . $typeWithSeparator . $date . $extension,"r");
-
+    
         $files = glob('/home/oniram/workspace/bovespa_extract/data/splited/*.txt');
         foreach($files as $filepath) {
+            Yii::debug("[IMPORT] start file  " . $filepath);
           $file = fopen($filepath, 'r');
           if ($file) {
-            //$header = fgets($file);
 
             while (($line = fgets($file)) !== false) {
-               
                 if($i == $batch_size) {
 
                     $rows = ArrayHelper::getColumn($papers, 'attributes');
@@ -161,24 +144,7 @@ class SiteController extends Controller
                     $papers = [];
 
                 }
-                // if(substr($line,0,10) == "99COTAHIST") {
-
-                //     // $rows = ArrayHelper::getColumn($papers, 'attributes');
-
-                //     // $collection = Yii::$app->mongodb->getCollection('papers');
-
-                //     // $insertedRows = $collection->batchInsert($rows);
-                   
-        
-                //     //$postModel = new Paper;
-
-                    
-
-                //     // Yii::$app->mongodb->createCommand()->batchInsert($rows, null )->execute();
-
-                //     Yii::debug("[IMPORT] end parseDataAndSaveInDatabase data from " );
-                //     return "FIM";
-                // }
+               
 
                 try {
 
@@ -195,10 +161,11 @@ class SiteController extends Controller
 
                     
                     //DATA DO PREGÃO
-                    $dateTime = \DateTime::createFromFormat('Ymd', substr($line,2,8));
+                    $dateTime = \DateTime::createFromFormat('YmdHis', substr($line,2,8).'000000');
                     
                     
-                    $paper->date = $dateTime->format("Y-m-d");
+                    
+                    $paper->date = new \MongoDB\BSON\UTCDateTime($dateTime);
 
                     //CODBDI - CÓDIGO BDI
                     //UTILIZADO PARA CLASSIFICAR OS PAPÉIS NA EMISSÃO DO BOLETIM DIÁRIO DE INFORMAÇÕES
@@ -215,6 +182,7 @@ class SiteController extends Controller
                     $paper->nomres = str_replace(' ', '', substr($line,27,12));
 
                     //ESPECI - ESPECIFICAÇÃO DO PAPEL
+                    // TODO remover espacos apenas do inicio e no final da string
                     $paper->especi = str_replace(' ', '', substr($line,39,10));
 
                     //PRAZOT - PRAZO EM DIAS DO MERCADO A TERMO
@@ -224,24 +192,24 @@ class SiteController extends Controller
                     $paper->modref = str_replace(' ', '', substr($line,52,4));
 
                     //PREABE - PREÇO DE ABERTURA DO PAPEL- MERCADO NO PREGÃO
-                    $paper->preab = str_replace(' ', '', substr($line,56,11));
+                    $paper->preab = (float) substr_replace(substr($line,56,13), ".", 11, 0 );
 
                     //PREMAX - PREÇO MÁXIMO DO PAPEL- MERCADO NO PREGÃO
-                    $paper->premax = str_replace(' ', '', substr($line,69,11));
+                    $paper->premax = (float) substr_replace(substr($line,69,13), ".", 11, 0 );
 
                     //PREMIN - PREÇO MÍNIMO DO PAPEL- MERCADO NO PREGÃO
-                    $paper->premin = str_replace(' ', '', substr($line,82,11));                
+                    $paper->premin = (float) substr_replace(substr($line,82,13), ".", 11, 0 );           
 
                     //PREMED - PREÇO MÉDIO DO PAPEL- MERCADO NO PREGÃO
-                    $paper->premed = str_replace(' ', '', substr($line,95,11));                                
+                    $paper->premed = (float) substr_replace(substr($line,95,13), ".", 11, 0 );                           
                     //PREULT - PREÇO DO ÚLTIMO NEGÓCIO DO PAPEL-MERCADO NO PREGÃO
-                    $paper->preult = str_replace(' ', '', substr($line,108,11));
+                    $paper->preult = (float) substr_replace(substr($line,108,13), ".", 11, 0 );
 
                     //PREOFC - PREÇO DA MELHOR OFERTA DE COMPRA DO PAPEL- MERCADO
-                    $paper->preofc = str_replace(' ', '', substr($line,121,11));                
+                    $paper->preofc = (float) substr_replace(substr($line,121,13), ".", 11, 0 );
 
                     //PREOFV - PREÇO DA MELHOR OFERTA DE VENDA DO PAPEL- MERCADO
-                    $paper->preofv = str_replace(' ', '', substr($line,134,11));                
+                    $paper->preofv = (float) substr_replace(substr($line,134,13), ".", 11, 0 );            
 
                     //TOTNEG - NEG. -NÚMERO DE NEGÓCIOS EFETUADOS COM O PAPEL- MERCADO NO PREGÃO
                     $paper->totneg = str_replace(' ', '', substr($line,147,05));
@@ -273,10 +241,8 @@ class SiteController extends Controller
                     //DISMES - NÚMERO DE DISTRIBUIÇÃO DO PAPEL
                     $paper->dismes = str_replace(' ', '', substr($line,242,3));              
 
-                    $paper->created_at = date("Y-m-d H:i:s");
-                    
-                    //$paper->save();
-
+                    $paper->created_at = new \MongoDB\BSON\UTCDateTime(new DateTime());
+                        
                     $papers[$i] = $paper;
                     $i = $i+1;
 
@@ -291,7 +257,6 @@ class SiteController extends Controller
              
              
             $rows = ArrayHelper::getColumn($papers, 'attributes');
-            Yii::debug("[IMPORT] fim " .  sizeof($rows));
             
             $collection = Yii::$app->mongodb->getCollection('papers');
             
@@ -310,10 +275,75 @@ class SiteController extends Controller
     }
 
     public function actionFind() {
+        //nomeres
         $rows = [];
-        $paper = Paper::find()->where(["nomres"=>"PPSA        "])->one();
-        $rows = $paper->attributes;
-        return print_r($rows);
+
+        $startDay = \DateTime::createFromFormat('YmdHis', '20181016000000');
+        $endDay = \DateTime::createFromFormat('YmdHis', '20191015000000');
+
+        $d1=$this->toIsoDate($startDay->getTimestamp());
+        $d2=$this->toIsoDate($endDay->getTimestamp());  
+        
+        //ITUB4
+        //02/01/2013  a 15/10/2019
+        // menor preco 23 no dia 15/01/2016
+        // maior preco 53 no dia 26/01/2018
+
+        //16/10/2018 a 15/10/2019
+        //maior preco em 16/11/2018 - 52,75
+        //menor preco em 16/05/2019 - 31,44
+        //dividir em 6 intervalos de 3,56 (arredondei em 0,01)
+        //ex: 31  <= x < 34,5
+        $papers = Paper::find()->where(["codneg"=>"ITUB4", "tpmerc" => "010"])
+        ->andWhere(['>=', 'date', $d1])->andWhere(['<=', 'date', $d2])
+        ->orderBy(["preult" => SORT_ASC])->all()
+        ;
+
+        $states = ["0" => 0, "1" => 0, "2" => 0, "3" => 0, "4" => 0, "5" => 0];
+
+        foreach($papers as $paper) {
+            if($paper->preult < 35) {
+                $paper->state = 0;    
+            }
+            if($paper->preult >= 35 && $paper->preult < 38.56) {
+                $paper->state = 1;    
+            }
+            if($paper->preult >= 38.56 && $paper->preult < 42.12) {
+                $paper->state = 2;    
+            }
+            if($paper->preult >= 42.12 && $paper->preult < 45.68) {
+                $paper->state = 3;    
+            }
+            if($paper->preult >= 45.68 && $paper->preult < 49.24) {
+                $paper->state = 4;    
+            }
+            if($paper->preult >= 49.24) {
+                $paper->state = 5;    
+            }
+            $states[$paper->state] += 1;
+        }
+
+        $matrix = array_fill(0, 6, array_fill(0, 6, 0));
+        $count = 0;
+        foreach($papers as $paper) {
+            if($count != 0) {
+                $matrix[$oldPaper->state][$paper->state] += 1;    
+            } 
+            $oldPaper = $paper;
+            $count += 1;
+        }
+
+        
+        return $this->render('find', [
+            'matrix' => $matrix,
+            'states' => $states
+        ]);
+
+    
+    }
+
+    public function toIsoDate($timestamp){
+        return new \MongoDB\BSON\UTCDateTime($timestamp * 1000);
     }
 
 
