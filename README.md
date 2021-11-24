@@ -32,3 +32,10 @@ http://localhost:8080/index.php?r=site/import
 
 
 The action for this route is actionImport and was defined in: controllers/SiteController.php
+
+
+### Restore Mongo 
+
+```mongorestore --db papers dump```
+
+dump is a path to backup folder
