@@ -39,3 +39,14 @@ The action for this route is actionImport and was defined in: controllers/SiteCo
 ```mongorestore --db papers dump```
 
 dump is a path to backup folder
+
+### Connect and Find a documnet in Mongo
+```
+
+$ mongo
+
+$ use papers;
+
+
+
+```
